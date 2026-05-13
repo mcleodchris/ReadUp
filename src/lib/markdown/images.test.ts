@@ -12,6 +12,10 @@ describe("classifySrc", () => {
     expect(classifySrc("data:image/png;base64,abc")).toBe("data");
   });
 
+  it("identifies protocol-relative URLs separately from absolute paths", () => {
+    expect(classifySrc("//cdn.example.com/x.png")).toBe("protocol-relative");
+  });
+
   it("identifies absolute paths", () => {
     expect(classifySrc("/var/x.png")).toBe("absolute");
     expect(classifySrc("C:/Users/x.png")).toBe("absolute");
@@ -22,6 +26,18 @@ describe("classifySrc", () => {
     expect(classifySrc("x.png")).toBe("relative");
     expect(classifySrc("./x.png")).toBe("relative");
     expect(classifySrc("../assets/x.png")).toBe("relative");
+  });
+
+  it("does not treat unknown schemes as relative", () => {
+    expect(classifySrc("mailto:foo@example.com")).toBe("other");
+    expect(classifySrc("javascript:alert(1)")).toBe("other");
+    expect(classifySrc("file:///etc/passwd")).toBe("other");
+    expect(classifySrc("ftp://example.com/x")).toBe("other");
+  });
+
+  it("treats empty / whitespace-only src as other", () => {
+    expect(classifySrc("")).toBe("other");
+    expect(classifySrc("   ")).toBe("other");
   });
 });
 

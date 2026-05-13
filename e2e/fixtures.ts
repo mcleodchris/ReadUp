@@ -46,6 +46,43 @@ export function defaultMockOptions(): MockOptions {
     ],
   };
 
+  const hostile: MockDir = {
+    name: "hostile",
+    path: "/fixtures/hostile",
+    files: [
+      file(
+        "index.md",
+        [
+          "# Hostile document",
+          "",
+          "## Inline script tag",
+          "",
+          "<script>window.__pwned = 'script'; document.title = 'PWNED-script';</script>",
+          "",
+          "## Image onerror",
+          "",
+          '<img src=x onerror="window.__pwned = \'onerror\'; document.title = \'PWNED-onerror\'">',
+          "",
+          "## javascript: link",
+          "",
+          "[click me](javascript:window.__pwned='javascript')",
+          "",
+          "## data: link",
+          "",
+          "[click me 2](data:text/html,<script>window.__pwned='data'</script>)",
+          "",
+          "## SVG onload",
+          "",
+          "<svg onload=\"window.__pwned='svg'\"></svg>",
+          "",
+          "## iframe with javascript:",
+          "",
+          '<iframe src="javascript:window.__pwned=\'iframe\'"></iframe>',
+        ].join("\n"),
+      ),
+    ],
+  };
+
   const wiki: MockDir = {
     name: "wiki",
     path: "/fixtures/wiki",
@@ -68,6 +105,7 @@ export function defaultMockOptions(): MockOptions {
       [readmeOnly.path]: readmeOnly,
       [sortFallback.path]: sortFallback,
       [wiki.path]: wiki,
+      [hostile.path]: hostile,
     },
     files: {
       "/standalone.md": {

@@ -1,24 +1,54 @@
 use std::cmp::Ordering;
 use std::fs;
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde::Serialize;
+use tauri::{AppHandle, Manager, Runtime, State};
 use thiserror::Error;
 
+use crate::roots::{OpenedRoots, MAX_FILE_BYTES};
 use crate::{InitKind, InitTarget};
 
 const MD_EXTS: &[&str] = &["md", "markdown"];
 
-#[derive(Debug, Error)]
+/// IPC error type. The frontend receives `{ kind, message }` so it can
+/// distinguish e.g. NotFound vs Forbidden without parsing strings.
+#[derive(Debug, Error, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum FsError {
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("invalid path")]
-    InvalidPath,
+    #[error("io error: {message}")]
+    Io { message: String },
+    #[error("not found: {path}")]
+    NotFound { path: String },
+    #[error("permission denied: {path}")]
+    PermissionDenied { path: String },
+    #[error("invalid path: {message}")]
+    InvalidPath { message: String },
+    #[error("path is outside an opened folder: {path}")]
+    Forbidden { path: String },
+    #[error("file too large ({size} bytes; max {max})")]
+    TooLarge { size: u64, max: u64 },
 }
 
-#[derive(Serialize)]
+impl From<std::io::Error> for FsError {
+    fn from(e: std::io::Error) -> Self {
+        match e.kind() {
+            ErrorKind::NotFound => FsError::NotFound {
+                path: e.to_string(),
+            },
+            ErrorKind::PermissionDenied => FsError::PermissionDenied {
+                path: e.to_string(),
+            },
+            _ => FsError::Io {
+                message: e.to_string(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct FileRead {
     pub path: PathBuf,
     pub content: String,
@@ -29,7 +59,10 @@ pub struct FileRead {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum TreeNode {
-    File { name: String, path: PathBuf },
+    File {
+        name: String,
+        path: PathBuf,
+    },
     Dir {
         name: String,
         path: PathBuf,
@@ -93,7 +126,9 @@ pub fn resolve_entry_path(folder: &Path) -> Result<Option<PathBuf>, FsError> {
 pub fn build_tree(root: &Path) -> Result<Option<TreeNode>, FsError> {
     let meta = fs::metadata(root)?;
     if !meta.is_dir() {
-        return Err(FsError::InvalidPath);
+        return Err(FsError::InvalidPath {
+            message: format!("{} is not a directory", root.display()),
+        });
     }
     let name = root
         .file_name()
@@ -106,17 +141,38 @@ pub fn build_tree(root: &Path) -> Result<Option<TreeNode>, FsError> {
 fn build_node(path: &Path, name: &str) -> Option<TreeNode> {
     let read = match fs::read_dir(path) {
         Ok(r) => r,
-        Err(_) => return None,
+        Err(err) => {
+            eprintln!("fs_commands: read_dir({}) failed: {err}", path.display());
+            return None;
+        }
     };
 
     let mut children: Vec<TreeNode> = Vec::new();
-    for entry in read.flatten() {
+    for entry in read {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(err) => {
+                eprintln!("fs_commands: dir entry in {} failed: {err}", path.display());
+                continue;
+            }
+        };
         let entry_path = entry.path();
         let entry_name = entry.file_name().to_string_lossy().to_string();
         let file_type = match entry.file_type() {
             Ok(t) => t,
-            Err(_) => continue,
+            Err(err) => {
+                eprintln!(
+                    "fs_commands: file_type({}) failed: {err}",
+                    entry_path.display()
+                );
+                continue;
+            }
         };
+        // Skip symlinks entirely while walking — they can leave the root and
+        // we'd rather not show shortcuts to files we'd block on read anyway.
+        if file_type.is_symlink() {
+            continue;
+        }
         if file_type.is_dir() {
             if let Some(child) = build_node(&entry_path, &entry_name) {
                 children.push(child);
@@ -146,7 +202,11 @@ fn compare_nodes(a: &TreeNode, b: &TreeNode) -> Ordering {
     let dir_a = matches!(a, TreeNode::Dir { .. });
     let dir_b = matches!(b, TreeNode::Dir { .. });
     if dir_a != dir_b {
-        return if dir_a { Ordering::Less } else { Ordering::Greater };
+        return if dir_a {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        };
     }
     let na = node_name(a).to_lowercase();
     let nb = node_name(b).to_lowercase();
@@ -161,15 +221,18 @@ fn node_name(n: &TreeNode) -> &str {
 
 pub fn cli_open(arg: &str) -> Option<InitTarget> {
     let path = PathBuf::from(arg);
-    let meta = fs::metadata(&path).ok()?;
+    let canonical = path.canonicalize().ok()?;
+    let meta = fs::metadata(&canonical).ok()?;
     let kind = if meta.is_dir() {
         InitKind::Folder
-    } else {
+    } else if meta.is_file() {
         InitKind::File
+    } else {
+        return None;
     };
     Some(InitTarget {
         kind,
-        path: path.canonicalize().unwrap_or(path),
+        path: canonical,
     })
 }
 
@@ -177,44 +240,147 @@ pub fn cli_open(arg: &str) -> Option<InitTarget> {
 // Tauri command wrappers
 // ---------------------------------------------------------------------------
 
+/// Extend Tauri's asset-protocol scope to include a newly-opened root, so
+/// `convertFileSrc` URLs under that root are servable for images. The initial
+/// scope is empty (see `tauri.conf.json`); we only ever widen it to roots the
+/// user has explicitly opened, so this stays inside the sandbox.
+fn extend_asset_scope<R: Runtime>(app: &AppHandle<R>, root: &Path) {
+    let scope = app.asset_protocol_scope();
+    if let Err(err) = scope.allow_directory(root, true) {
+        eprintln!(
+            "fs_commands: failed to widen asset scope for {}: {err}",
+            root.display()
+        );
+    }
+}
+
+/// Open a folder for browsing: canonicalise, register as a root, return the
+/// pruned tree and the resolved entry file in one round trip.
 #[tauri::command]
-pub fn read_file(path: String) -> Result<FileRead, String> {
-    let p = PathBuf::from(&path);
-    let content = fs::read_to_string(&p).map_err(|e| format!("read_file: {e}"))?;
-    let mtime = fs::metadata(&p)
+pub fn open_folder<R: Runtime>(
+    app: AppHandle<R>,
+    roots: State<'_, OpenedRoots>,
+    path: String,
+) -> Result<OpenFolderResult, FsError> {
+    let raw = PathBuf::from(&path);
+    let canonical = roots.add(&raw).map_err(FsError::from)?;
+    extend_asset_scope(&app, &canonical);
+
+    let tree = build_tree(&canonical)?;
+    let entry = resolve_entry_path(&canonical)?.map(|p| p.to_string_lossy().to_string());
+    Ok(OpenFolderResult {
+        root: canonical,
+        tree,
+        entry,
+    })
+}
+
+#[derive(Serialize)]
+pub struct OpenFolderResult {
+    pub root: PathBuf,
+    pub tree: Option<TreeNode>,
+    pub entry: Option<String>,
+}
+
+/// Open a single file: canonicalise, register the file's directory as a
+/// root, return the file's content.
+#[tauri::command]
+pub fn open_file<R: Runtime>(
+    app: AppHandle<R>,
+    roots: State<'_, OpenedRoots>,
+    path: String,
+) -> Result<FileRead, FsError> {
+    let raw = PathBuf::from(&path);
+    let canonical = roots.add(&raw).map_err(FsError::from)?;
+    extend_asset_scope(&app, canonical.parent().unwrap_or(&canonical));
+    read_file_checked(&roots, &canonical)
+}
+
+/// Read a file. Only succeeds if the canonicalised path is inside a
+/// previously-opened root. This is the symlink-escape guard *and* the
+/// path-traversal guard.
+#[tauri::command]
+pub fn read_file(
+    roots: State<'_, OpenedRoots>,
+    path: String,
+) -> Result<FileRead, FsError> {
+    let raw = PathBuf::from(&path);
+    let canonical = raw.canonicalize().map_err(FsError::from)?;
+    read_file_checked(&roots, &canonical)
+}
+
+fn read_file_checked(roots: &OpenedRoots, canonical: &Path) -> Result<FileRead, FsError> {
+    if !roots.allows(canonical) {
+        return Err(FsError::Forbidden {
+            path: canonical.display().to_string(),
+        });
+    }
+    let meta = fs::metadata(canonical)?;
+    if !meta.is_file() {
+        return Err(FsError::InvalidPath {
+            message: format!("{} is not a regular file", canonical.display()),
+        });
+    }
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(FsError::TooLarge {
+            size: meta.len(),
+            max: MAX_FILE_BYTES,
+        });
+    }
+    let mut buf = String::with_capacity(meta.len() as usize);
+    let mut file = fs::File::open(canonical)?;
+    file.read_to_string(&mut buf)?;
+
+    let mtime = meta
+        .modified()
         .ok()
-        .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
         .map(|d| d.as_millis())
         .unwrap_or(0);
+
     Ok(FileRead {
-        path: p,
-        content,
+        path: canonical.to_path_buf(),
+        content: buf,
         mtime,
     })
 }
 
 #[tauri::command]
-pub fn list_dir(path: String) -> Result<TreeNode, String> {
-    let p = PathBuf::from(&path);
-    match build_tree(&p).map_err(|e| e.to_string())? {
+pub fn list_dir<R: Runtime>(
+    app: AppHandle<R>,
+    roots: State<'_, OpenedRoots>,
+    path: String,
+) -> Result<TreeNode, FsError> {
+    let raw = PathBuf::from(&path);
+    let canonical = roots.add(&raw).map_err(FsError::from)?;
+    extend_asset_scope(&app, &canonical);
+    match build_tree(&canonical)? {
         Some(t) => Ok(t),
         None => Ok(TreeNode::Dir {
-            name: p
+            name: canonical
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string(),
-            path: p,
+            path: canonical,
             children: vec![],
         }),
     }
 }
 
 #[tauri::command]
-pub fn resolve_entry(folder: String) -> Result<Option<String>, String> {
-    let p = PathBuf::from(&folder);
-    let resolved = resolve_entry_path(&p).map_err(|e| e.to_string())?;
+pub fn resolve_entry(
+    roots: State<'_, OpenedRoots>,
+    folder: String,
+) -> Result<Option<String>, FsError> {
+    let raw = PathBuf::from(&folder);
+    let canonical = raw.canonicalize().map_err(FsError::from)?;
+    if !roots.allows(&canonical) {
+        return Err(FsError::Forbidden {
+            path: canonical.display().to_string(),
+        });
+    }
+    let resolved = resolve_entry_path(&canonical)?;
     Ok(resolved.map(|pb| pb.to_string_lossy().to_string()))
 }
 
@@ -301,6 +467,97 @@ mod tests {
         write(&dir.path().join("zebra.md"), "z");
         let entry = resolve_entry_path(dir.path()).unwrap().unwrap();
         assert_eq!(entry.file_name().unwrap(), "README.md");
+    }
+
+    // --- Sandbox / security tests -----------------------------------------
+
+    #[test]
+    fn read_file_rejects_paths_outside_any_root() {
+        let dir = tempdir().unwrap();
+        let inside = dir.path().join("ok.md");
+        write(&inside, "ok");
+
+        let roots = OpenedRoots::default();
+        // No root registered yet.
+        let err = read_file_checked(&roots, &inside.canonicalize().unwrap());
+        assert!(matches!(err, Err(FsError::Forbidden { .. })));
+    }
+
+    #[test]
+    fn read_file_accepts_paths_inside_a_root() {
+        let dir = tempdir().unwrap();
+        let inside = dir.path().join("ok.md");
+        write(&inside, "ok");
+
+        let roots = OpenedRoots::default();
+        roots.add(dir.path()).unwrap();
+        let out = read_file_checked(&roots, &inside.canonicalize().unwrap()).unwrap();
+        assert_eq!(out.content, "ok");
+    }
+
+    #[test]
+    fn read_file_rejects_traversal_outside_root() {
+        let outer = tempdir().unwrap();
+        let inner = outer.path().join("inner");
+        fs::create_dir(&inner).unwrap();
+        let secret = outer.path().join("secret.md");
+        write(&secret, "hi");
+
+        let roots = OpenedRoots::default();
+        roots.add(&inner).unwrap();
+
+        // Caller asks for the secret via a traversal-shaped path. Canonicalise
+        // resolves it to the real secret path which is outside `inner`.
+        let probe = inner.join("..").join("secret.md");
+        let canonical = probe.canonicalize().unwrap();
+        let err = read_file_checked(&roots, &canonical);
+        assert!(matches!(err, Err(FsError::Forbidden { .. })), "got {err:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_file_rejects_symlink_that_escapes_root() {
+        use std::os::unix::fs::symlink;
+        let inner = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let secret = outside.path().join("secret.md");
+        write(&secret, "do not read");
+
+        let link = inner.path().join("evil.md");
+        symlink(&secret, &link).unwrap();
+
+        let roots = OpenedRoots::default();
+        roots.add(inner.path()).unwrap();
+
+        let canonical = link.canonicalize().unwrap(); // resolves to secret
+        let err = read_file_checked(&roots, &canonical);
+        assert!(matches!(err, Err(FsError::Forbidden { .. })), "got {err:?}");
+    }
+
+    #[test]
+    fn read_file_rejects_files_larger_than_limit() {
+        let dir = tempdir().unwrap();
+        let big = dir.path().join("big.md");
+        // 17 MiB > MAX_FILE_BYTES (16 MiB).
+        let mut f = File::create(&big).unwrap();
+        let chunk = vec![b'a'; 1024 * 1024];
+        for _ in 0..17 {
+            f.write_all(&chunk).unwrap();
+        }
+
+        let roots = OpenedRoots::default();
+        roots.add(dir.path()).unwrap();
+        let err = read_file_checked(&roots, &big.canonicalize().unwrap());
+        assert!(matches!(err, Err(FsError::TooLarge { .. })), "got {err:?}");
+    }
+
+    #[test]
+    fn read_file_rejects_non_regular_files() {
+        let dir = tempdir().unwrap();
+        let roots = OpenedRoots::default();
+        roots.add(dir.path()).unwrap();
+        let err = read_file_checked(&roots, &dir.path().canonicalize().unwrap());
+        assert!(matches!(err, Err(FsError::InvalidPath { .. })), "got {err:?}");
     }
 
     fn v<const N: usize>(items: [&str; N]) -> Vec<String> {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import MarkdownIt from "markdown-it";
-import { wikilinksPlugin, WIKILINK_HREF_PREFIX } from "./wikilinks-plugin";
+import { wikilinksPlugin } from "./wikilinks-plugin";
 
 function md(resolve: (target: string) => string | null) {
   return new MarkdownIt().use(wikilinksPlugin, { resolve });
@@ -10,7 +10,7 @@ describe("wikilinksPlugin", () => {
   it("renders resolved wikilinks as anchors", () => {
     const html = md((t) => (t === "foo" ? "/wiki/foo.md" : null)).render("see [[foo]]");
     expect(html).toContain('class="wikilink"');
-    expect(html).toContain(`href="${WIKILINK_HREF_PREFIX}/wiki/foo.md"`);
+    expect(html).toContain('href="#"');
     expect(html).toContain('data-wikilink-target="/wiki/foo.md"');
     expect(html).toMatch(/>foo<\/a>/);
   });
@@ -58,8 +58,8 @@ describe("wikilinksPlugin", () => {
 
   it("escapes attribute values", () => {
     const html = md((t) => `/path/${t}`).render('[[a"b]]');
-    // The attribute must be safely encoded.
-    expect(html).toContain('href="readup-wikilink:/path/a&quot;b"');
+    // The data-wikilink-target attribute must be safely encoded.
+    expect(html).toContain('data-wikilink-target="/path/a&quot;b"');
   });
 
   it("renders many wikilinks in one paragraph", () => {

@@ -1,21 +1,19 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
   import type { DirNode } from "../lib/files/tree";
   import TreeBranch from "./TreeBranch.svelte";
 
-  export let tree: DirNode;
-  export let current: string | null = null;
-
-  const dispatch = createEventDispatcher<{ select: string }>();
-
-  function onSelect(path: string) {
-    dispatch("select", path);
+  interface Props {
+    tree: DirNode;
+    current?: string | null;
+    onSelect: (path: string) => void;
   }
+
+  const { tree, current = null, onSelect }: Props = $props();
 </script>
 
 <nav class="tree" aria-label="Document tree">
   <div class="root-name" title={tree.path}>{tree.name}</div>
-  <TreeBranch nodes={tree.children} {current} depth={0} on:select={(e) => onSelect(e.detail)} />
+  <TreeBranch nodes={tree.children} {current} depth={0} {onSelect} />
 </nav>
 
 <style>

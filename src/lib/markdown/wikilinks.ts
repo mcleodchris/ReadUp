@@ -70,6 +70,12 @@ export function buildWikilinkIndex(tree: DirNode): WikilinkIndex {
     }
   });
 
+  // Pre-sort candidate lists so `resolveWikilink` doesn't sort on every call.
+  // Deterministic order also gives stable proximity tie-breaks.
+  for (const list of byStem.values()) {
+    list.sort();
+  }
+
   return { byStem, byRelative, rootPath };
 }
 
@@ -106,10 +112,12 @@ export function resolveWikilink(
   if (candidates.length === 1) return candidates[0];
 
   if (fromDir) {
+    // Candidates are pre-sorted in `buildWikilinkIndex` so iteration order is
+    // already alphabetical — a single linear pass picks the closest match.
     const fromNorm = normSlashes(fromDir);
     let best = candidates[0];
     let bestScore = -1;
-    for (const c of [...candidates].sort()) {
+    for (const c of candidates) {
       const score = commonPrefixDepth(fromNorm, normSlashes(dirname(c)));
       if (score > bestScore) {
         best = c;
@@ -118,7 +126,7 @@ export function resolveWikilink(
     }
     return best;
   }
-  return [...candidates].sort()[0];
+  return candidates[0];
 }
 
 // ---- helpers --------------------------------------------------------------

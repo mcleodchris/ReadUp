@@ -1,30 +1,17 @@
 import { createHighlighter, type Highlighter, type BundledLanguage } from "shiki";
 
 /**
- * Languages preloaded by Shiki. We bias toward common readme content.
- * Extra languages are loaded on demand via `loadLanguage`.
+ * Languages preloaded by Shiki. Kept small for first-paint cost — anything
+ * else is lazy-loaded on demand via `ensureLanguage`. We chose the six that
+ * dominate real-world READMEs and developer notes.
  */
 const DEFAULT_LANGS: BundledLanguage[] = [
   "bash",
-  "c",
-  "cpp",
-  "css",
-  "diff",
-  "go",
-  "html",
-  "java",
   "javascript",
   "json",
   "markdown",
-  "python",
   "rust",
-  "shell",
-  "sql",
-  "svelte",
-  "toml",
-  "tsx",
   "typescript",
-  "yaml",
 ];
 
 let highlighter: Highlighter | null = null;

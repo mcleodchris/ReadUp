@@ -8,64 +8,77 @@
   import { applyTheme } from "../lib/themes/theme";
   import { initHighlighter } from "../lib/markdown/highlight";
   import {
+    fsErrorMessage,
     inTauri,
-    listDir,
+    openFile as openFileIpc,
+    openFolder as openFolderIpc,
     readFile,
     readInitTarget,
-    resolveEntryPath,
   } from "../lib/ipc";
-  import { pruneTree } from "../lib/files/tree";
+  import { dirname } from "../lib/files/paths";
+  import { pruneTree, type DirNode } from "../lib/files/tree";
   import { buildWikilinkIndex } from "../lib/markdown/wikilinks";
 
-  $: applyTheme($state.theme);
+  $effect(() => applyTheme($state.theme));
 
   async function loadFile(path: string) {
     try {
       const r = await readFile(path);
-      const dir = path.replace(/[\\/][^\\/]+$/, "");
       state.update((s) => ({
         ...s,
-        current: { path: r.path, source: r.content, dir },
+        current: { path: r.path, source: r.content, dir: dirname(r.path) },
         error: null,
       }));
     } catch (err) {
-      state.update((s) => ({ ...s, error: `Failed to read ${path}: ${err}` }));
+      state.update((s) => ({
+        ...s,
+        error: `Failed to read ${path}: ${fsErrorMessage(err)}`,
+      }));
     }
   }
 
   async function openFolderRoot(path: string) {
     try {
-      const raw = await listDir(path);
-      const pruned = pruneTree(raw);
-      const entry = await resolveEntryPath(path);
+      const r = await openFolderIpc(path);
+      const pruned = r.tree ? pruneTree(r.tree as DirNode) : null;
       const wikilinkIndex = pruned ? buildWikilinkIndex(pruned) : null;
       state.update((s) => ({
         ...s,
-        root: { kind: "folder", path },
+        root: { kind: "folder", path: r.root },
         tree: pruned,
         wikilinkIndex,
         error: pruned ? null : "No markdown files found in folder.",
       }));
-      if (entry) await loadFile(entry);
+      if (r.entry) await loadFile(r.entry);
       else state.update((s) => ({ ...s, current: null }));
     } catch (err) {
-      state.update((s) => ({ ...s, error: `Failed to open folder: ${err}` }));
+      state.update((s) => ({
+        ...s,
+        error: `Failed to open folder: ${fsErrorMessage(err)}`,
+      }));
     }
   }
 
   async function openFileRoot(path: string) {
-    state.update((s) => ({
-      ...s,
-      root: { kind: "file", path },
-      tree: null,
-      wikilinkIndex: null,
-    }));
-    await loadFile(path);
+    try {
+      const r = await openFileIpc(path);
+      state.update((s) => ({
+        ...s,
+        root: { kind: "file", path: r.path },
+        tree: null,
+        wikilinkIndex: null,
+        current: { path: r.path, source: r.content, dir: dirname(r.path) },
+        error: null,
+      }));
+    } catch (err) {
+      state.update((s) => ({
+        ...s,
+        error: `Failed to open file: ${fsErrorMessage(err)}`,
+      }));
+    }
   }
 
   onMount(async () => {
-    // Highlight engine is async; we begin loading immediately so the first
-    // render has a chance to use it, with a synchronous plain fallback if not.
     initHighlighter().catch(() => {
       /* highlighting becomes a no-op */
     });
@@ -77,17 +90,12 @@
       if (init.kind === "file") await openFileRoot(init.path);
       else await openFolderRoot(init.path);
     } catch (err) {
-      state.update((s) => ({ ...s, error: `Startup error: ${err}` }));
+      state.update((s) => ({
+        ...s,
+        error: `Startup error: ${fsErrorMessage(err)}`,
+      }));
     }
   });
-
-  function onSelect(event: CustomEvent<string>) {
-    loadFile(event.detail);
-  }
-
-  function onWikilink(event: CustomEvent<string>) {
-    loadFile(event.detail);
-  }
 </script>
 
 <div class="layout">
@@ -95,7 +103,11 @@
   <div class="body">
     {#if $state.tree && $state.root?.kind === "folder"}
       <aside class="sidebar">
-        <Sidebar tree={$state.tree} current={$state.current?.path ?? null} on:select={onSelect} />
+        <Sidebar
+          tree={$state.tree}
+          current={$state.current?.path ?? null}
+          onSelect={loadFile}
+        />
       </aside>
     {/if}
     <main class="content">
@@ -106,7 +118,7 @@
             flavour={$state.flavour}
             theme={$state.theme}
             wikilinkIndex={$state.wikilinkIndex}
-            on:wikilink={onWikilink}
+            onWikilink={loadFile}
           />
         {:else}
           <SourceView document={$state.current} />

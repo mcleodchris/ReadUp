@@ -4,8 +4,12 @@
   import { inTauri, pickFile, pickFolder } from "../lib/ipc";
   import { basename } from "../lib/files/paths";
 
-  export let onOpenFile: (path: string) => Promise<void>;
-  export let onOpenFolder: (path: string) => Promise<void>;
+  interface Props {
+    onOpenFile: (path: string) => Promise<void>;
+    onOpenFolder: (path: string) => Promise<void>;
+  }
+
+  const { onOpenFile, onOpenFolder }: Props = $props();
 
   async function openFile() {
     if (!inTauri()) {
@@ -50,12 +54,12 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKey} />
+<svelte:window onkeydown={handleKey} />
 
 <div class="toolbar">
   <div class="group">
-    <button on:click={openFile} title="Open file (Ctrl/Cmd+O)">Open File…</button>
-    <button on:click={openFolder} title="Open folder (Ctrl/Cmd+Shift+O)">Open Folder…</button>
+    <button onclick={openFile} title="Open file (Ctrl/Cmd+O)">Open File…</button>
+    <button onclick={openFolder} title="Open folder (Ctrl/Cmd+Shift+O)">Open Folder…</button>
   </div>
 
   <div class="title">
@@ -67,16 +71,16 @@
       <button
         type="button"
         aria-pressed={$state.view === "rendered"}
-        on:click={() => setView("rendered")}>Rendered</button
+        onclick={() => setView("rendered")}>Rendered</button
       >
       <button
         type="button"
         aria-pressed={$state.view === "source"}
-        on:click={() => setView("source")}>Source</button
+        onclick={() => setView("source")}>Source</button
       >
     </div>
 
-    <select value={$state.flavour} on:change={setFlavour} title="Markdown flavour">
+    <select value={$state.flavour} onchange={setFlavour} title="Markdown flavour">
       {#each FLAVOURS as f}
         <option value={f.value}>{f.label}</option>
       {/each}
@@ -86,13 +90,13 @@
       <button
         type="button"
         aria-pressed={$state.theme === "latte"}
-        on:click={() => setTheme("latte")}
+        onclick={() => setTheme("latte")}
         title="Latte (light)">☀</button
       >
       <button
         type="button"
         aria-pressed={$state.theme === "mocha"}
-        on:click={() => setTheme("mocha")}
+        onclick={() => setTheme("mocha")}
         title="Mocha (dark)">☾</button
       >
     </div>

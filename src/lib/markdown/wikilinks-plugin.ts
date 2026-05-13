@@ -11,7 +11,13 @@ export interface WikilinkPluginOptions {
   resolve: (target: string) => string | null;
 }
 
-export const WIKILINK_HREF_PREFIX = "readup-wikilink:";
+/**
+ * Resolved wikilinks render with `href="#"`; navigation happens via a click
+ * handler that reads `data-wikilink-target`. Using a fragment-only href keeps
+ * middle-click / "open in new tab" from trying to navigate to a custom scheme
+ * (which the CSP would block anyway), and keeps the link keyboard-focusable.
+ */
+const WIKILINK_HREF = "#";
 
 /** markdown-it plugin: `[[target]]` and `[[target|alias]]` → anchor or span. */
 export function wikilinksPlugin(md: MarkdownIt, opts: WikilinkPluginOptions): void {
@@ -46,7 +52,7 @@ function parseRule(state: StateInline, silent: boolean, opts: WikilinkPluginOpti
     const open = state.push("wikilink_open", resolved ? "a" : "span", 1);
     open.markup = "[[";
     if (resolved) {
-      open.attrSet("href", `${WIKILINK_HREF_PREFIX}${resolved}`);
+      open.attrSet("href", WIKILINK_HREF);
       open.attrSet("data-wikilink-target", resolved);
       open.attrSet("class", "wikilink");
     } else {

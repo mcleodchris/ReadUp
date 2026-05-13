@@ -66,10 +66,20 @@ if grep -qE "thread 'main' panicked|error while running ReadUp|invalid type|miss
   exit 1
 fi
 
-if [[ "$status" == "124" || "$status" == "137" || "$status" == "0" || "$status" == "1" ]]; then
-  echo "smoke-binary: OK (reached GUI init step; no panic; status $status)"
-  exit 0
-fi
-
-echo "smoke-binary: unexpected exit status $status" >&2
-exit "$status"
+# Acceptable exits:
+#   124 / 137 → timeout sent SIGTERM/SIGKILL while the process was still
+#               running. This is the "got past init without crashing" signal.
+#     0       → unlikely (the binary stays in the event loop), but harmless.
+# Any other status — including 1 — is a real failure: we used to accept 1
+# here, which masked Tauri-init errors that exit cleanly with status 1.
+case "$status" in
+  124|137|0)
+    echo "smoke-binary: OK (reached GUI init step; no panic; status $status)"
+    exit 0
+    ;;
+  *)
+    echo "smoke-binary: unexpected exit status $status — output:" >&2
+    echo "$out" >&2
+    exit "$status"
+    ;;
+esac

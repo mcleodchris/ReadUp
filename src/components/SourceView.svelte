@@ -1,35 +1,43 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Document } from "../lib/store";
-  import { highlightCode, initHighlighter, ensureLanguage } from "../lib/markdown/highlight";
+  import {
+    highlightCode,
+    getHighlighter,
+    initHighlighter,
+    ensureLanguage,
+  } from "../lib/markdown/highlight";
+  import { escapeHtml } from "../lib/util/escape";
 
-  export let document: Document;
-
-  let container: HTMLDivElement;
-  let html = "";
-
-  function escapeHtml(s: string): string {
-    return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
+  interface Props {
+    document: Document;
   }
 
-  $: {
+  const { document }: Props = $props();
+
+  let renderEpoch = $state(0);
+
+  let html = $derived.by(() => {
+    void renderEpoch;
     const hl = highlightCode(document.source, "markdown");
-    html = hl ?? `<pre><code>${escapeHtml(document.source)}</code></pre>`;
-  }
+    return hl ?? `<pre><code>${escapeHtml(document.source)}</code></pre>`;
+  });
 
-  $: void rehighlight(document.source);
+  $effect(() => {
+    void document;
+    void rehighlight();
+  });
 
-  async function rehighlight(_s: string) {
+  async function rehighlight() {
     await tick();
-    if (highlightCode("", "markdown") === null) {
-      await initHighlighter();
-      await ensureLanguage("markdown");
-      html = highlightCode(document.source, "markdown") ?? html;
-    }
+    if (getHighlighter() !== null) return;
+    await initHighlighter();
+    await ensureLanguage("markdown");
+    renderEpoch++;
   }
 </script>
 
-<div class="source" bind:this={container}>
+<div class="source">
   {@html html}
 </div>
 

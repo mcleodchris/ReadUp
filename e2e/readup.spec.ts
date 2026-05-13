@@ -79,8 +79,7 @@ test("clicking a sidebar entry switches files", async ({ page }) => {
   await page.getByRole("button", { name: /Open Folder/ }).click();
   await expect(page.getByRole("heading", { name: "ReadUp — Sample Document" })).toBeVisible();
 
-  // Expand docs, click nested doc.
-  await page.getByRole("button", { name: "docs" }).click();
+  // Folders default to expanded, so the nested doc is already in the tree.
   await page.getByRole("button", { name: "getting-started.md" }).click();
   await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
 });
@@ -238,6 +237,40 @@ test("wikilinks: inline + fenced code are left untouched", async ({ page }) => {
   await expect(fenced).toBeVisible();
   const inline = page.locator(".prose p code", { hasText: "[[also-not-a-link]]" });
   await expect(inline).toBeVisible();
+});
+
+test("hostile markdown is neutralised: no script execution, no dangerous hrefs", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(`console.error: ${m.text()}`);
+  });
+
+  await withMock(page, { cliOpen: { kind: "folder", path: "/fixtures/hostile" } });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Hostile document" })).toBeVisible();
+  // Give any would-be-evil JS a moment to try.
+  await page.waitForTimeout(750);
+
+  // Nothing should have executed.
+  const pwned = await page.evaluate(() => (window as any).__pwned ?? null);
+  expect(pwned, "any of the XSS payloads escaped").toBeNull();
+  expect(await page.title()).not.toMatch(/PWNED/);
+
+  // No anchor should carry a dangerous scheme.
+  const hrefs = await page.locator(".prose a").evaluateAll((els) =>
+    els.map((e) => (e as HTMLAnchorElement).getAttribute("href") ?? ""),
+  );
+  for (const h of hrefs) {
+    expect(h, `bad href: ${h}`).not.toMatch(/^(?:javascript|vbscript|file|data:text):/i);
+  }
+
+  // Page errors are expected for blocked schemes / missing img — filter and
+  // make sure none mentions actual JS execution.
+  const real = errors.filter((e) => !/ERR_|net::|Failed to load resource|mock-fs/i.test(e));
+  expect(real, real.join("\n")).toEqual([]);
 });
 
 test("captures no console errors during a full render", async ({ page }) => {

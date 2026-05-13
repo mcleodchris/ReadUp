@@ -112,7 +112,20 @@ export function injectScript(opts: MockOptions): string {
     return opts.pickerFile ?? null;
   }
 
+  function openFolder(args) {
+    const path = args.path;
+    const tree = folders[path] ? toTreeNode(folders[path]) : null;
+    const entry = resolveEntry(path);
+    return { root: path, tree, entry };
+  }
+
+  function openFile(args) {
+    return readFile(args.path);
+  }
+
   const handlers = {
+    open_folder: openFolder,
+    open_file: openFile,
     read_file: (args) => readFile(args.path),
     list_dir: (args) => listDir(args.path),
     resolve_entry: (args) => resolveEntry(args.folder),
