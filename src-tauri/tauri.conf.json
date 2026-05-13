@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ReadUp",
+  "version": "0.1.0",
+  "identifier": "io.readup.app",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ReadUp",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 600,
+        "minHeight": 400
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "ReadUp",
+    "homepage": "https://github.com/your-org/ReadUp",
+    "copyright": "Copyright © 2026 ReadUp",
+    "category": "DeveloperTool",
+    "shortDescription": "Multiplatform markdown reader",
+    "longDescription": "ReadUp is a fast, multiplatform markdown reader. It opens a single file or a folder of documents, renders GitHub-flavoured markdown with footnotes and definition lists, syntax-highlights code with Catppuccin themes, and renders Mermaid diagrams natively.",
+    "licenseFile": null,
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "frameworks": [],
+      "exceptionDomain": ""
+    },
+    "windows": {
+      "wix": {
+        "language": ["en-US"]
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser"
+      }
+    },
+    "createUpdaterArtifacts": false
+  }
+}

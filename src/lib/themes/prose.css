@@ -1,0 +1,218 @@
+/* Prose styles that consume the CSS variables defined per theme. */
+
+.prose {
+  color: var(--rd-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  max-width: 80ch;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 4rem;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  color: var(--rd-fg);
+  line-height: 1.25;
+  margin-top: 1.75em;
+  margin-bottom: 0.6em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.prose h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--rd-border);
+  padding-bottom: 0.3em;
+}
+
+.prose h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--rd-border);
+  padding-bottom: 0.2em;
+}
+
+.prose h3 {
+  font-size: 1.25em;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose dl,
+.prose blockquote,
+.prose table,
+.prose pre {
+  margin: 0 0 1em;
+}
+
+.prose a {
+  color: var(--rd-link);
+  text-decoration: none;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.75em;
+}
+
+.prose li + li {
+  margin-top: 0.3em;
+}
+
+.prose blockquote {
+  border-left: 4px solid var(--rd-blockquote-border);
+  padding: 0.25em 1em;
+  color: var(--rd-fg-muted);
+  background: var(--rd-bg-elevated);
+  border-radius: 4px;
+}
+
+.prose code {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.9em;
+  background: var(--rd-code-bg);
+  border: 1px solid var(--rd-code-border);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.prose pre {
+  padding: 1em;
+  background: var(--rd-code-bg);
+  border: 1px solid var(--rd-code-border);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.prose pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 0.875em;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.prose th,
+.prose td {
+  padding: 0.5em 0.85em;
+  border: 1px solid var(--rd-border);
+  text-align: left;
+}
+
+.prose tbody tr:nth-child(even) {
+  background: var(--rd-table-stripe);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rd-border);
+  margin: 2em 0;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.prose dl dt {
+  font-weight: 600;
+  margin-top: 0.6em;
+}
+
+.prose dl dd {
+  margin: 0 0 0.4em 1.2em;
+  color: var(--rd-fg-muted);
+}
+
+.prose .mermaid {
+  background: var(--rd-bg-elevated);
+  padding: 1em;
+  border-radius: 6px;
+  border: 1px solid var(--rd-code-border);
+  text-align: center;
+}
+
+.prose .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.prose .mermaid-error {
+  color: var(--ctp-red);
+  background: var(--rd-bg-elevated);
+}
+
+.prose a.wikilink {
+  color: var(--ctp-mauve);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ctp-mauve) 45%, transparent);
+  padding-bottom: 0.05em;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.prose a.wikilink:hover {
+  background: color-mix(in srgb, var(--ctp-mauve) 14%, transparent);
+  color: var(--ctp-mauve);
+  border-bottom-style: solid;
+}
+
+.prose .wikilink-broken {
+  color: var(--ctp-red);
+  text-decoration: line-through;
+  text-decoration-style: dotted;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.prose .image-fallback {
+  display: inline-block;
+  padding: 0.5em 0.85em;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--rd-bg-elevated);
+  border: 1px dashed var(--rd-border);
+  border-radius: 4px;
+  color: var(--rd-fg-muted);
+}
+
+/* Shiki dual-theme support: hide the inactive theme. */
+:root[data-theme="latte"] .shiki span.shiki--dark,
+:root[data-theme="latte"] .shiki .shiki--dark {
+  display: none;
+}
+
+:root[data-theme="mocha"] .shiki span.shiki--light,
+:root[data-theme="mocha"] .shiki .shiki--light {
+  display: none;
+}
+
+/* Shiki uses CSS variables for colors per theme. Toggle them based on root. */
+:root[data-theme="latte"] .shiki,
+:root[data-theme="latte"] .shiki span {
+  color: var(--shiki-light) !important;
+  background-color: var(--shiki-light-bg) !important;
+}
+
+:root[data-theme="mocha"] .shiki,
+:root[data-theme="mocha"] .shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+}

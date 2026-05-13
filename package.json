@@ -1,0 +1,50 @@
+{
+  "name": "readup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A multiplatform markdown reader",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "bun run build && playwright test",
+    "test:e2e:fast": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "tauri": "tauri",
+    "preflight": "bash scripts/preflight.sh",
+    "dev:clean": "bash scripts/dev.sh",
+    "smoke": "bash scripts/smoke.sh",
+    "smoke:bin": "bash scripts/smoke-binary.sh",
+    "release:local": "bash scripts/release-local.sh"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "katex": "^0.16.11",
+    "markdown-it": "^14.1.0",
+    "markdown-it-deflist": "^3.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^11.4.1",
+    "shiki": "^1.24.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@playwright/test": "^1.49.1",
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/markdown-it-footnote": "^3.0.4",
+    "@types/node": "^22.10.2",
+    "jsdom": "^25.0.1",
+    "svelte": "^5.16.0",
+    "svelte-check": "^4.1.1",
+    "tslib": "^2.8.1",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8"
+  }
+}
