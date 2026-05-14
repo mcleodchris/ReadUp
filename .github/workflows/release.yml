@@ -26,9 +26,9 @@ jobs:
       matrix:
         include:
           # Universal macOS binary (Apple silicon + Intel).
-          - os: macos-latest
-            target: universal-apple-darwin
-            label: macos
+          #- os: macos-latest
+          #  target: universal-apple-darwin
+          #  label: macos
           - os: ubuntu-22.04
             target: ""
             label: linux-x86_64
